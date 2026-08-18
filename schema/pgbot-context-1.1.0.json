@@ -216,6 +216,9 @@
         "schema_version": {
           "type": "string"
         },
+        "profile": {
+          "type": "string"
+        },
         "collected_at": {
           "type": "string",
           "format": "date-time"
@@ -477,6 +480,9 @@
           "type": "string"
         },
         "cluster_scoped": {
+          "type": "boolean"
+        },
+        "preexisting": {
           "type": "boolean"
         }
       },
@@ -750,6 +756,30 @@
       "required": [
         "exactness",
         "blocked_count"
+      ]
+    },
+    "NarrowIdentityColumn": {
+      "properties": {
+        "schema": {
+          "type": "string"
+        },
+        "table": {
+          "type": "string"
+        },
+        "column": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "schema",
+        "table",
+        "column",
+        "type"
       ]
     },
     "PartitionRollup": {
@@ -1132,6 +1162,12 @@
         "items": {
           "items": {
             "$ref": "#/$defs/SequenceUsage"
+          },
+          "type": "array"
+        },
+        "narrow_identity": {
+          "items": {
+            "$ref": "#/$defs/NarrowIdentityColumn"
           },
           "type": "array"
         }

@@ -44,7 +44,12 @@ type inspectFlags struct {
 	format       string   // text|json|sarif|junit (B5-2)
 	allDatabases bool     // inspect every database in the cluster (B3)
 	parallel     int      // max concurrent database inspections (B3); default 1 = serial
+	profile      string   // full (default) | schema: emit only schema-scoped findings (D3-1)
+	failOnNew    string   // path to a base report; act only on findings new vs it (D3-2)
 }
+
+// schemaProfile reports whether this run is a schema-only check (--profile=schema).
+func (f inspectFlags) schemaProfile() bool { return f.profile == "schema" }
 
 func newInspectCmd() *cobra.Command {
 	var f inspectFlags
@@ -76,6 +81,8 @@ func newInspectCmd() *cobra.Command {
 	fl.StringArrayVar(&f.ignore, "ignore", nil, "suppress a finding for this run: finding[:object] (repeatable)")
 	fl.StringVar(&f.failOn, "fail-on", "warn", "exit non-zero on findings at/above this severity: critical|warn|info|none")
 	fl.StringVar(&f.format, "format", "text", "output format: text|json|sarif|junit|prometheus")
+	fl.StringVar(&f.profile, "profile", "full", "which findings to run: full (a live database) | schema (catalog-only, safe on an empty CI database)")
+	fl.StringVar(&f.failOnNew, "fail-on-new", "", "path to a base report (JSON); mark findings already in it preexisting and act only on new ones")
 	fl.BoolVar(&f.allDatabases, "all-databases", false, "inspect every database in the cluster (cluster-wide findings reported once)")
 	fl.IntVar(&f.parallel, "parallel", 1, "max databases inspected concurrently under --all-databases (default 1 = serial)")
 	return cmd
@@ -90,6 +97,9 @@ func runInspect(cmd *cobra.Command, args []string, f inspectFlags) error {
 	}
 	if !validFormat(f.format) {
 		return usageErrf("--format must be text|json|sarif|junit|prometheus, got %q", f.format)
+	}
+	if f.profile != "full" && f.profile != "schema" {
+		return usageErrf("--profile must be full|schema, got %q", f.profile)
 	}
 	connString := firstNonEmpty(argAt(args, 0), os.Getenv("DATABASE_URL"), os.Getenv("PGBOT_DATABASE_URL"))
 	if connString == "" {
@@ -129,6 +139,7 @@ func runInspect(cmd *cobra.Command, args []string, f inspectFlags) error {
 	}
 	c, err := collect.Run(ctx, target, collect.Options{
 		Interval: f.interval, RawQueryText: f.rawQueries, ASHHz: f.ashHz, ASHWindow: f.window, Deadline: f.timeout,
+		SchemaOnly: f.schemaProfile(),
 	})
 	if err != nil {
 		return fmt.Errorf("collect: %s", conn.RedactConnString(err.Error()))
@@ -282,7 +293,9 @@ func exitCode(fs []model.Finding, failOn string) int {
 	threshold := severityRank(failOn)
 	hasCritical, hasAtThreshold := false, false
 	for _, f := range fs {
-		if f.Suppressed || severityRank(f.Severity) < threshold {
+		// Suppressed (B2) and preexisting (D3-2, --fail-on-new) findings never move
+		// the exit code — only active, newly-introduced findings do.
+		if f.Suppressed || f.Preexisting || severityRank(f.Severity) < threshold {
 			continue
 		}
 		hasAtThreshold = true

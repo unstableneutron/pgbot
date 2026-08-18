@@ -31,29 +31,32 @@ type Section struct {
 
 // Context is the whole picture of one database at one moment.
 type Context struct {
-	SchemaVersion string         `json:"schema_version"`
-	CollectedAt   time.Time      `json:"collected_at"`
-	Fingerprint   string         `json:"fingerprint"` // stable per target database (see store)
-	Server        ServerInfo     `json:"server"`
-	Window        Window         `json:"window"`
-	Health        *Health        `json:"health,omitempty"`
-	Activity      *Activity      `json:"activity,omitempty"`
-	Locks         *Locks         `json:"locks,omitempty"`
-	Queries       *Queries       `json:"queries,omitempty"`
-	Tables        *Tables        `json:"tables,omitempty"`
-	Indexes       *Indexes       `json:"indexes,omitempty"`
-	WAL           *WAL           `json:"wal,omitempty"`
-	IO            *IO            `json:"io,omitempty"`
-	Replication   *Replication   `json:"replication,omitempty"`
-	Settings      *Settings      `json:"settings,omitempty"`
-	Limits        *Limits        `json:"limits,omitempty"`
-	Horizon       *VacuumHorizon `json:"horizon,omitempty"`   // what pins the xmin/vacuum horizon (A1)
-	Sequences     *Sequences     `json:"sequences,omitempty"` // sequence exhaustion headroom (A8)
-	Progress      *Progress      `json:"progress,omitempty"`  // in-flight pg_stat_progress_* operations (A11)
-	Archiver      *Archiver      `json:"archiver,omitempty"`  // WAL archiving health (A15)
-	Checksums     *Checksums     `json:"checksums,omitempty"` // data-checksum failures cluster-wide (A16)
-	Standby       *StandbyStatus `json:"standby,omitempty"`   // standby-side recovery conflicts (A17)
-	Deltas        *Deltas        `json:"deltas,omitempty"`    // vs baseline; nil on first run
+	SchemaVersion string `json:"schema_version"`
+	// Profile is "schema" for a schema-only run (--profile=schema); empty for the
+	// default full run. It changes what the report is allowed to claim (D3-1).
+	Profile     string         `json:"profile,omitempty"`
+	CollectedAt time.Time      `json:"collected_at"`
+	Fingerprint string         `json:"fingerprint"` // stable per target database (see store)
+	Server      ServerInfo     `json:"server"`
+	Window      Window         `json:"window"`
+	Health      *Health        `json:"health,omitempty"`
+	Activity    *Activity      `json:"activity,omitempty"`
+	Locks       *Locks         `json:"locks,omitempty"`
+	Queries     *Queries       `json:"queries,omitempty"`
+	Tables      *Tables        `json:"tables,omitempty"`
+	Indexes     *Indexes       `json:"indexes,omitempty"`
+	WAL         *WAL           `json:"wal,omitempty"`
+	IO          *IO            `json:"io,omitempty"`
+	Replication *Replication   `json:"replication,omitempty"`
+	Settings    *Settings      `json:"settings,omitempty"`
+	Limits      *Limits        `json:"limits,omitempty"`
+	Horizon     *VacuumHorizon `json:"horizon,omitempty"`   // what pins the xmin/vacuum horizon (A1)
+	Sequences   *Sequences     `json:"sequences,omitempty"` // sequence exhaustion headroom (A8)
+	Progress    *Progress      `json:"progress,omitempty"`  // in-flight pg_stat_progress_* operations (A11)
+	Archiver    *Archiver      `json:"archiver,omitempty"`  // WAL archiving health (A15)
+	Checksums   *Checksums     `json:"checksums,omitempty"` // data-checksum failures cluster-wide (A16)
+	Standby     *StandbyStatus `json:"standby,omitempty"`   // standby-side recovery conflicts (A17)
+	Deltas      *Deltas        `json:"deltas,omitempty"`    // vs baseline; nil on first run
 	// Set (with Deltas nil) when a stats reset / restart between runs makes any
 	// comparison fiction — e.g. serverless scale-to-zero. See T2.
 	DeltaSuppressedReason string       `json:"delta_suppressed_reason,omitempty"`
@@ -455,6 +458,18 @@ type ProgressOp struct {
 type Sequences struct {
 	Section
 	Items []SequenceUsage `json:"items,omitempty"`
+	// NarrowIdentity is the structural (schema-scoped) half: int2/int4 columns
+	// backed by a sequence, detectable regardless of current value (D3-0).
+	NarrowIdentity []NarrowIdentityColumn `json:"narrow_identity,omitempty"`
+}
+
+// NarrowIdentityColumn is a sequence-backed column whose integer type will wrap
+// well before a bigint would — int4 at 2.1B, int2 at 32767.
+type NarrowIdentityColumn struct {
+	Schema string `json:"schema"`
+	Table  string `json:"table"`
+	Column string `json:"column"`
+	Type   string `json:"type"` // int2 | int4
 }
 
 type SequenceUsage struct {
@@ -566,6 +581,12 @@ type Finding struct {
 	// connected database. In an --all-databases run it is reported once, on the
 	// first database, and omitted from the rest (B3) — this flag says so.
 	ClusterScoped bool `json:"cluster_scoped,omitempty"`
+	// Preexisting is set by --fail-on-new (D3-2): this finding (or all of an
+	// aggregate's rows) was already present in the base report, so it is NOT a
+	// regression this change introduced. Preexisting findings stay in --json (so
+	// nothing is hidden) but are excluded from SARIF and the exit code, and not
+	// annotated — only what the change newly introduced is acted on.
+	Preexisting bool `json:"preexisting,omitempty"`
 }
 
 // Impact is why a finding matters and how much, in ONE dimension. Two findings
