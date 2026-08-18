@@ -82,7 +82,7 @@ func (*healthCollector) Assemble(state *runState, pair engine.SamplePair, interv
 		rollbackRatio = float64(rollbacks) / float64(transactions)
 	}
 	state.Data.Health = &Health{
-		Section:            sampled("rates use two cumulative SYS.SYSTEMSTATS samples"),
+		Section:            sampled("rates use two cumulative SYS.SYSTEMSTATS samples and include ttbot's own SELECT activity"),
 		TransactionsPerSec: round2(float64(transactions) / seconds),
 		CommitsPerSec:      rate("txn.commits.count"),
 		RollbacksPerSec:    rate("txn.rollbacks"),
