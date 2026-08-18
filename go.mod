@@ -4,6 +4,7 @@ go 1.25.13
 
 require (
 	github.com/BurntSushi/toml v1.6.0
+	github.com/alexbrainman/odbc v0.0.0-20250601004241-49e6b2bc0cf0
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/invopop/jsonschema v0.14.0
 	github.com/jackc/pgx/v5 v5.9.2
