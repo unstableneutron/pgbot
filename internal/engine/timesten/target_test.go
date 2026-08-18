@@ -93,3 +93,18 @@ func TestQueryRejectsWriteBeforeDriver(t *testing.T) {
 		t.Fatalf("driver received operations %#v", got)
 	}
 }
+
+func TestInspectRejectsNilTarget(t *testing.T) {
+	if _, err := Inspect(context.Background(), nil, InspectOptions{}); err == nil {
+		t.Fatal("expected nil-target error")
+	}
+}
+
+func TestCapabilitiesIdentity(t *testing.T) {
+	target := &Target{caps: Capabilities{
+		Database: "sampledb", Server: "db/6625", User: "monitor", Version: supportedVersion,
+	}}
+	if got := target.Capabilities().Identity(); got != "timesten:sampledb" {
+		t.Fatalf("identity = %q", got)
+	}
+}

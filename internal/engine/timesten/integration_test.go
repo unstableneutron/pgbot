@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/pgrundev/pgbot/internal/model"
 )
 
 func TestLiveTimesTenSafetyBoundary(t *testing.T) {
@@ -89,5 +91,40 @@ FROM SYS.DUAL`
 		if err := target.db.PingContext(pingCtx); err != nil {
 			t.Fatalf("ping after cancellation: %v", err)
 		}
+	}
+
+	report, err := Inspect(ctx, target, InspectOptions{
+		Interval: 500 * time.Millisecond, Deadline: 20 * time.Second, Concurrency: 4,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, ok := report.Data.(*Data)
+	if !ok || data == nil {
+		t.Fatalf("report data = %T", report.Data)
+	}
+	sections := map[string]string{
+		"health":      data.Health.Exactness,
+		"connections": data.Connections.Exactness,
+		"locks":       data.Locks.Exactness,
+		"space":       data.Space.Exactness,
+		"persistence": data.Persistence.Exactness,
+		"tables":      data.Tables.Exactness,
+		"indexes":     data.Indexes.Exactness,
+		"replication": data.Replication.Exactness,
+	}
+	for name, exactness := range sections {
+		if exactness == model.ExactnessUnavailable || exactness == model.ExactnessReset || exactness == "" {
+			t.Errorf("%s exactness = %q", name, exactness)
+		}
+	}
+	if len(data.Tables.Rows) == 0 {
+		t.Error("table inventory is empty")
+	}
+	if data.TopSQL == nil || data.TopSQL.Exactness != model.ExactnessUnavailable || !strings.Contains(data.TopSQL.Reason, "TTStats") {
+		t.Errorf("top SQL = %#v", data.TopSQL)
+	}
+	if data.Configuration == nil || data.Configuration.Exactness != model.ExactnessUnavailable || !strings.Contains(data.Configuration.Reason, "SELECT-only") {
+		t.Errorf("configuration = %#v", data.Configuration)
 	}
 }
