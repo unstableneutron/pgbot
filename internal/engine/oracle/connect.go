@@ -157,7 +157,8 @@ func (t *Target) queryRow(ctx context.Context, query string, args []any, scan fu
 	})
 }
 
-var easyConnectPassword = regexp.MustCompile(`(?i)(^|\s)([^\s/@]+)/(?:[^\s@]+)@`)
+var easyConnectPassword = regexp.MustCompile(`(?i)(^|\s)([^\s/@]+)/(?:[^\s/@]+)@`)
+var oracleURLPassword = regexp.MustCompile(`(?i)(oracle://[^:/\s]+:)[^@\s]+@`)
 
 // RedactDSN removes passwords from Oracle URL and Easy Connect strings.
 func RedactDSN(dsn string) string {
@@ -170,5 +171,6 @@ func RedactDSN(dsn string) string {
 		}
 		return parsed.String()
 	}
+	dsn = oracleURLPassword.ReplaceAllString(dsn, `${1}REDACTED@`)
 	return easyConnectPassword.ReplaceAllString(dsn, `${1}${2}/REDACTED@`)
 }

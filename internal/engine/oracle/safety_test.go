@@ -19,6 +19,27 @@ func TestValidateDefaultQueryAllowsReadOnlySQL(t *testing.T) {
 	}
 }
 
+func TestEmbeddedQueriesPassDefaultSafetyPolicy(t *testing.T) {
+	entries, err := queryFiles.ReadDir("sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
+			continue
+		}
+		name := "sql/" + entry.Name()
+		query, err := queryFiles.ReadFile(name)
+		if err != nil {
+			t.Errorf("read %s: %v", name, err)
+			continue
+		}
+		if err := ValidateDefaultQuery(string(query)); err != nil {
+			t.Errorf("%s failed safety policy: %v", name, err)
+		}
+	}
+}
+
 func TestValidateDefaultQueryRejectsUnsafeSQL(t *testing.T) {
 	tests := map[string]string{
 		"UPDATE app.users SET enabled = 0":                      "must start",

@@ -118,6 +118,8 @@ func TestRedactDSN(t *testing.T) {
 	}{
 		{"oracle://scott:tiger@db.example/ORCL", "oracle://scott:REDACTED@db.example/ORCL"},
 		{"scott/tiger@db.example:1521/ORCL", "scott/REDACTED@db.example:1521/ORCL"},
+		{"connect oracle://scott:tiger@db.example/ORCL failed", "connect oracle://scott:REDACTED@db.example/ORCL failed"},
+		{"connect scott/tiger@db.example:1521/ORCL failed", "connect scott/REDACTED@db.example:1521/ORCL failed"},
 	} {
 		if got := RedactDSN(test.in); got != test.want {
 			t.Errorf("RedactDSN(%q) = %q, want %q", test.in, got, test.want)
