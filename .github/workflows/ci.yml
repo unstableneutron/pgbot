@@ -84,6 +84,30 @@ jobs:
         run: |
           python3 -c "import json,sys; d=json.load(open('pgbot-report.sarif')); assert d['version']=='2.1.0' and d['runs'], 'bad SARIF'; print('valid SARIF,', len(d['runs'][0]['results']), 'results')"
 
+  # action-smoke pre-builds pgbot onto PATH, so it never runs install.sh. This job
+  # deliberately does NOT, so the action must install via `install.sh` with the
+  # default version 'latest' — the path the "latest is a literal tag → 404" bug
+  # broke and the entry point for the agent-push / CI-check workflow.
+  action-install-smoke:
+    name: github action install path (latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: start PostgreSQL with a pg_monitor role
+        run: |
+          docker run -d --name pg -p 5432:5432 -e POSTGRES_PASSWORD=pw postgres:17
+          for i in $(seq 1 60); do docker exec pg pg_isready -U postgres -h 127.0.0.1 -q && break; sleep 1; done
+          docker exec pg psql -U postgres -q \
+            -c "CREATE ROLE pgbot_ro LOGIN PASSWORD 'ro'; GRANT pg_monitor TO pgbot_ro; GRANT CONNECT ON DATABASE postgres TO pgbot_ro;"
+      - name: run the action with no pgbot on PATH (default version=latest)
+        uses: ./.github/actions/pgbot
+        with:
+          dsn: postgres://pgbot_ro:ro@127.0.0.1:5432/postgres
+          format: text
+          fail-on: none
+      - name: the action installed pgbot and it runs
+        run: pgbot --version
+
   static-check:
     name: no EXPLAIN ANALYZE
     runs-on: ubuntu-latest
@@ -205,3 +229,28 @@ jobs:
           docker exec pg psql -U postgres -q -c \
             "DO \$\$ BEGIN FOR i IN 1..200000 LOOP INSERT INTO t(note) VALUES('x'); IF i%50=0 THEN COMMIT; END IF; END LOOP; END \$\$;" &
           go test ./internal/collect/ -run Integration_poolerRatesStayCorrect -v
+
+  npm:
+    name: npm wrapper (packaging)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      # DoD 9: exit codes and signals pass through the wrapper unmodified — a 2
+      # (critical) arrives as 2. Pure-Node, no DB.
+      - name: wrapper unit tests
+        run: node --test npm/test/*.test.mjs
+      # DoD 10: `npm install --ignore-scripts` produces a working install. Builds
+      # the real binary, packs the wrapper + this platform's package, installs the
+      # tarballs with --ignore-scripts, and runs `pgbot --version` through it.
+      - name: pack + --ignore-scripts install smoke
+        run: bash npm/test/pack-smoke.sh
