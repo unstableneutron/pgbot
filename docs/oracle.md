@@ -24,7 +24,8 @@ password does not occur in shell history or the process argument list.
 It also checks every built-in statement before execution. The check rejects
 writes, multiple statements, comments, and Oracle Diagnostics Pack or Tuning
 Pack objects. SQL text from the shared cursor is scrubbed before it enters a
-report.
+report. A canceled collector connection is removed from the pool before the
+next collector runs.
 
 ## Monitoring user
 
@@ -53,10 +54,11 @@ GRANT SELECT ON SYS.DBA_DATA_FILES TO orabot_monitor;
 GRANT SELECT ON SYS.DBA_FREE_SPACE TO orabot_monitor;
 GRANT SELECT ON SYS.DBA_TAB_STATISTICS TO orabot_monitor;
 GRANT SELECT ON SYS.DBA_INDEXES TO orabot_monitor;
+GRANT SELECT ON SYS.DBA_USERS TO orabot_monitor;
 ```
 
 Do not grant `DBA`, `SELECT ANY TABLE`, `INSERT`, `UPDATE`, `DELETE`, or DDL
-privileges. The four `DBA_*` grants expose metadata that the current storage and
+privileges. The five `DBA_*` grants expose metadata that the current storage and
 schema collectors need. They do not grant access to application table rows.
 
 If an optional view is not available, its collector section is marked
@@ -76,5 +78,6 @@ The inspect workflow includes:
 
 The storage check does not yet include temporary tablespaces, ASM or filesystem
 free space, or recovery-area use. Schema and index output is limited to the
-first 500 rows and records when the result is truncated. Live Oracle integration
-tests remain required before this support is released as stable.
+first 500 rows and records when the result is truncated. The live Oracle safety
+test covers all collector sections, schema filtering, SQL scrubbing, denied
+writes, cancellation, and pool recovery.

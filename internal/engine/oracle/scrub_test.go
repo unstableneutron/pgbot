@@ -45,7 +45,7 @@ func TestScrubQueryTextRemovesOracleLiterals(t *testing.T) {
 }
 
 func TestScrubQueryTextPreservesQueryShapeAndBinds(t *testing.T) {
-	got := ScrubQueryText("SELECT col1 FROM orders WHERE id = :1 AND status = :status AND amount > 120.50")
+	got := ScrubQueryText("SELECT col1 FROM orders WHERE id = :1 AND status = :status AND amount > 120.50\x00\x00")
 	for _, want := range []string{"SELECT col1", "orders", ":1", ":status"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("query shape lost %q: %q", want, got)
@@ -53,5 +53,8 @@ func TestScrubQueryTextPreservesQueryShapeAndBinds(t *testing.T) {
 	}
 	if strings.Contains(got, "120.50") {
 		t.Errorf("numeric literal leaked: %q", got)
+	}
+	if strings.ContainsRune(got, '\x00') {
+		t.Errorf("NUL padding leaked: %q", got)
 	}
 }

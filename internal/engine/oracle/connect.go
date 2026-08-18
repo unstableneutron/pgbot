@@ -4,6 +4,7 @@ package oracle
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -14,7 +15,10 @@ import (
 	_ "github.com/sijms/go-ora/v3"
 )
 
-const maxConnections = 4
+// go-ora returned EOF when the live 23c target started concurrent read-only
+// transactions. One pooled connection keeps the collector boundary reliable;
+// the shared scheduler can still run without Oracle-specific coordination.
+const maxConnections = 1
 
 // Capabilities describes the Oracle identity and topology established during
 // connection setup. The initial implementation supports one instance and one
@@ -48,7 +52,11 @@ type Target struct {
 // Open connects to Oracle, establishes database identity, and probes topology.
 // The DSN uses go-ora's oracle:// URL form.
 func Open(ctx context.Context, dsn string) (*Target, error) {
-	db, err := sql.Open("oracle", dsn)
+	driverDSN, err := oracleDriverDSN(dsn)
+	if err != nil {
+		return nil, err
+	}
+	db, err := sql.Open("oracle", driverDSN)
 	if err != nil {
 		return nil, fmt.Errorf("open Oracle connection: %w", err)
 	}
@@ -72,6 +80,19 @@ func Open(ctx context.Context, dsn string) (*Target, error) {
 	}
 	target.caps = caps
 	return target, nil
+}
+
+func oracleDriverDSN(dsn string) (string, error) {
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		return "", fmt.Errorf("parse Oracle connection URL: %w", err)
+	}
+	options := parsed.Query()
+	// A context break invalidates go-ora's fast-login cookie. Disable cookie
+	// reuse so the pool can replace a canceled connection without one EOF.
+	options.Set("FAST LOGIN", "false")
+	parsed.RawQuery = options.Encode()
+	return parsed.String(), nil
 }
 
 func validateSupportedVersion(version string) error {
@@ -100,15 +121,30 @@ func (t *Target) Close() error {
 // readOnly makes SET TRANSACTION READ ONLY the first statement after BeginTx.
 // go-ora rejects sql.TxOptions{ReadOnly:true}, so the adapter establishes the
 // equivalent Oracle transaction explicitly and commits only SELECT work.
-func (t *Target) readOnly(ctx context.Context, fn func(*sql.Tx) error) error {
+func (t *Target) readOnly(ctx context.Context, fn func(*sql.Tx) error) (err error) {
 	if t == nil || t.db == nil {
 		return fmt.Errorf("Oracle target is not open")
 	}
-	tx, err := t.db.BeginTx(ctx, nil)
+	conn, err := t.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("lease Oracle connection: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin Oracle transaction: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+		if ctx.Err() != nil {
+			// go-ora can leave ORA-01013 pending after a context break. Mark the
+			// leased connection bad after rollback so database/sql replaces it.
+			_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+		}
+	}()
 	if _, err := tx.ExecContext(ctx, "SET TRANSACTION READ ONLY"); err != nil {
 		return fmt.Errorf("set Oracle transaction read only: %w", err)
 	}

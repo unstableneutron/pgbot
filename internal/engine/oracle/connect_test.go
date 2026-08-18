@@ -41,7 +41,7 @@ type recordingConn struct{ log *operationLog }
 func (c *recordingConn) Prepare(string) (driver.Stmt, error) {
 	return nil, errors.New("not implemented")
 }
-func (c *recordingConn) Close() error { return nil }
+func (c *recordingConn) Close() error { c.log.add("CLOSE"); return nil }
 func (c *recordingConn) Begin() (driver.Tx, error) {
 	return c.BeginTx(context.Background(), driver.TxOptions{})
 }
@@ -108,6 +108,33 @@ func TestReadOnlyRollsBackAfterCollectorError(t *testing.T) {
 	want := []string{"BEGIN", "SET TRANSACTION READ ONLY", "ROLLBACK"}
 	if got := log.snapshot(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("operations = %#v, want %#v", got, want)
+	}
+}
+
+func TestReadOnlyDiscardsConnectionAfterCancellation(t *testing.T) {
+	target, log := openRecordingTarget(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	err := target.readOnly(ctx, func(*sql.Tx) error {
+		cancel()
+		return ctx.Err()
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context canceled", err)
+	}
+	want := []string{"BEGIN", "SET TRANSACTION READ ONLY", "ROLLBACK", "CLOSE"}
+	if got := log.snapshot(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("operations = %#v, want %#v", got, want)
+	}
+}
+
+func TestOracleDriverDSNDisablesFastLogin(t *testing.T) {
+	got, err := oracleDriverDSN("oracle://scott:tiger@db.example/ORCL?FAST+LOGIN=true&TRACE+DIR=%2Ftmp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "oracle://scott:tiger@db.example/ORCL?FAST+LOGIN=false&TRACE+DIR=%2Ftmp"
+	if got != want {
+		t.Fatalf("driver DSN = %q, want %q", got, want)
 	}
 }
 

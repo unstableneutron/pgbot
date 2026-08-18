@@ -40,15 +40,17 @@ func (c *recoveryCollector) Sample(ctx context.Context) (any, error) {
 	if err := c.target.query(ctx, archiveDestinationsSQL, func(rows *sql.Rows) error {
 		for rows.Next() {
 			var destination ArchiveDestination
+			var destinationError sql.NullString
 			if err := rows.Scan(
 				&destination.ID,
 				&destination.Name,
 				&destination.Status,
 				&destination.Target,
-				&destination.Error,
+				&destinationError,
 			); err != nil {
 				return err
 			}
+			destination.Error = destinationError.String
 			out.ArchiveDestinations = append(out.ArchiveDestinations, destination)
 		}
 		return nil

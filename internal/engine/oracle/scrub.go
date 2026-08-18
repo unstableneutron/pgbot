@@ -1,6 +1,9 @@
 package oracle
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 var (
 	oracleSingleQuoted = regexp.MustCompile(`'(?:[^']|'')*'`)
@@ -16,6 +19,7 @@ func ScrubQueryText(query string) string {
 	if query == "" {
 		return query
 	}
+	query = strings.ReplaceAll(query, "\x00", "")
 	scrubbed := scrubAlternativeQuotes(query)
 	scrubbed = oracleSingleQuoted.ReplaceAllLiteralString(scrubbed, "'?'")
 	scrubbed = oracleEmail.ReplaceAllLiteralString(scrubbed, "?")
