@@ -1,6 +1,7 @@
 package oracle
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -72,8 +73,8 @@ func TestGaugeCollectorsAssembleTypedSamples(t *testing.T) {
 	new(storageCollector).Assemble(state, engine.SamplePair{A: []Tablespace{{Name: "USERS", UsedRatio: 0.75}}}, 0)
 	new(memoryCollector).Assemble(state, engine.SamplePair{A: memorySample{SGABytes: 1024, PGABytes: 512}}, 0)
 	new(resourcesCollector).Assemble(state, engine.SamplePair{A: []ResourceLimit{{Name: "sessions", Limit: 100}}}, 0)
-	new(tablesCollector).Assemble(state, engine.SamplePair{A: []Table{{Owner: "APP", Name: "ORDERS", LastAnalyzed: &now}}}, 0)
-	new(indexesCollector).Assemble(state, engine.SamplePair{A: []Index{{Owner: "APP", Name: "ORDERS_PK"}}}, 0)
+	new(tablesCollector).Assemble(state, engine.SamplePair{A: tablesSample{Rows: []Table{{Owner: "APP", Name: "ORDERS", LastAnalyzed: &now}}}}, 0)
+	new(indexesCollector).Assemble(state, engine.SamplePair{A: indexesSample{Rows: []Index{{Owner: "APP", Name: "ORDERS_PK"}}}}, 0)
 	new(configurationCollector).Assemble(state, engine.SamplePair{A: map[string]Parameter{"processes": {Value: "300"}}}, 0)
 	new(recoveryCollector).Assemble(state, engine.SamplePair{A: recoverySample{
 		DatabaseRole: "PRIMARY",
@@ -124,5 +125,24 @@ func TestCollectorFailureIsLocalAndRedacted(t *testing.T) {
 	}
 	if strings.Contains(state.Data.Storage.Reason, "secret") || !strings.Contains(state.Data.Storage.Reason, "REDACTED") {
 		t.Errorf("unsafe failure reason %q", state.Data.Storage.Reason)
+	}
+}
+
+func TestSchemaCollectorsPreserveTruncationSignal(t *testing.T) {
+	state := &runState{}
+	new(tablesCollector).Assemble(state, engine.SamplePair{A: tablesSample{Truncated: true}}, 0)
+	new(indexesCollector).Assemble(state, engine.SamplePair{A: indexesSample{Truncated: true}}, 0)
+
+	if state.Data.Tables == nil || !state.Data.Tables.Truncated || state.Data.Tables.Rows == nil {
+		t.Errorf("tables = %#v", state.Data.Tables)
+	}
+	if state.Data.Indexes == nil || !state.Data.Indexes.Truncated || state.Data.Indexes.Rows == nil {
+		t.Errorf("indexes = %#v", state.Data.Indexes)
+	}
+}
+
+func TestInspectRejectsNilTarget(t *testing.T) {
+	if _, err := Inspect(context.Background(), nil, InspectOptions{}); err == nil {
+		t.Fatal("expected nil-target error")
 	}
 }

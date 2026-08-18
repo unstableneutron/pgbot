@@ -62,8 +62,28 @@ func Open(ctx context.Context, dsn string) (*Target, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("probe Oracle database: %w", err)
 	}
+	if err := validateSupportedVersion(caps.Version); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if caps.InstanceCount > 1 {
+		_ = db.Close()
+		return nil, fmt.Errorf("Oracle RAC is not supported by this orabot version: found %d instances", caps.InstanceCount)
+	}
 	target.caps = caps
 	return target, nil
+}
+
+func validateSupportedVersion(version string) error {
+	majorText, _, _ := strings.Cut(strings.TrimSpace(version), ".")
+	major, err := strconv.Atoi(majorText)
+	if err != nil {
+		return fmt.Errorf("cannot parse Oracle version %q", version)
+	}
+	if major < 19 {
+		return fmt.Errorf("Oracle version %q is not supported: orabot requires Oracle Database 19c or later", version)
+	}
+	return nil
 }
 
 // Capabilities returns a copy of the probed identity and topology.

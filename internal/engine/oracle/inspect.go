@@ -2,6 +2,7 @@ package oracle
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/pgrundev/pgbot/internal/engine"
@@ -22,6 +23,9 @@ type runState struct {
 
 // Inspect collects one read-only Oracle report.
 func Inspect(ctx context.Context, target *Target, opts InspectOptions) (*engine.Report, error) {
+	if target == nil || target.db == nil {
+		return nil, fmt.Errorf("inspect Oracle database: target is not open")
+	}
 	collectors := []engine.Collector[runState]{
 		&healthCollector{target: target},
 		&sessionsCollector{target: target},

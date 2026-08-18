@@ -11,11 +11,16 @@ import (
 
 type tablesCollector struct{ target *Target }
 
+type tablesSample struct {
+	Rows      []Table
+	Truncated bool
+}
+
 func (*tablesCollector) Name() string            { return "tables" }
 func (*tablesCollector) Kind() engine.SampleKind { return engine.Gauge }
 
 func (c *tablesCollector) Sample(ctx context.Context) (any, error) {
-	var out []Table
+	var rowsOut []Table
 	err := c.target.query(ctx, tablesSQL, func(rows *sql.Rows) error {
 		for rows.Next() {
 			var row Table
@@ -26,10 +31,15 @@ func (c *tablesCollector) Sample(ctx context.Context) (any, error) {
 			}
 			row.LastAnalyzed = timePointer(lastAnalyzed)
 			row.StaleStats = strings.EqualFold(staleStats, "YES")
-			out = append(out, row)
+			rowsOut = append(rowsOut, row)
 		}
 		return nil
 	})
+	out := tablesSample{Rows: rowsOut}
+	if len(out.Rows) > 500 {
+		out.Rows = out.Rows[:500]
+		out.Truncated = true
+	}
 	return out, err
 }
 
@@ -38,24 +48,29 @@ func (*tablesCollector) Assemble(state *runState, pair engine.SamplePair, _ time
 		state.Data.Tables = &Tables{Section: unavailable(pair.Err)}
 		return
 	}
-	rows, ok := pair.A.([]Table)
+	sample, ok := pair.A.(tablesSample)
 	if !ok {
 		state.Data.Tables = &Tables{Section: unavailable(typeError("tables", pair.A))}
 		return
 	}
-	if rows == nil {
-		rows = []Table{}
+	if sample.Rows == nil {
+		sample.Rows = []Table{}
 	}
-	state.Data.Tables = &Tables{Section: scraped(), Rows: rows}
+	state.Data.Tables = &Tables{Section: scraped(), Rows: sample.Rows, Truncated: sample.Truncated}
 }
 
 type indexesCollector struct{ target *Target }
+
+type indexesSample struct {
+	Rows      []Index
+	Truncated bool
+}
 
 func (*indexesCollector) Name() string            { return "indexes" }
 func (*indexesCollector) Kind() engine.SampleKind { return engine.Gauge }
 
 func (c *indexesCollector) Sample(ctx context.Context) (any, error) {
-	var out []Index
+	var rowsOut []Index
 	err := c.target.query(ctx, indexesSQL, func(rows *sql.Rows) error {
 		for rows.Next() {
 			var row Index
@@ -74,10 +89,15 @@ func (c *indexesCollector) Sample(ctx context.Context) (any, error) {
 				return err
 			}
 			row.LastAnalyzed = timePointer(lastAnalyzed)
-			out = append(out, row)
+			rowsOut = append(rowsOut, row)
 		}
 		return nil
 	})
+	out := indexesSample{Rows: rowsOut}
+	if len(out.Rows) > 500 {
+		out.Rows = out.Rows[:500]
+		out.Truncated = true
+	}
 	return out, err
 }
 
@@ -86,15 +106,15 @@ func (*indexesCollector) Assemble(state *runState, pair engine.SamplePair, _ tim
 		state.Data.Indexes = &Indexes{Section: unavailable(pair.Err)}
 		return
 	}
-	rows, ok := pair.A.([]Index)
+	sample, ok := pair.A.(indexesSample)
 	if !ok {
 		state.Data.Indexes = &Indexes{Section: unavailable(typeError("indexes", pair.A))}
 		return
 	}
-	if rows == nil {
-		rows = []Index{}
+	if sample.Rows == nil {
+		sample.Rows = []Index{}
 	}
-	state.Data.Indexes = &Indexes{Section: scraped(), Rows: rows}
+	state.Data.Indexes = &Indexes{Section: scraped(), Rows: sample.Rows, Truncated: sample.Truncated}
 }
 
 type configurationCollector struct{ target *Target }

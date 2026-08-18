@@ -126,3 +126,21 @@ func TestRedactDSN(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateSupportedVersion(t *testing.T) {
+	for _, test := range []struct {
+		version string
+		ok      bool
+	}{
+		{"19.0.0.0.0", true},
+		{"21.3.0.0.0", true},
+		{"26.1.0.0.0", true},
+		{"18.0.0.0.0", false},
+		{"unknown", false},
+	} {
+		err := validateSupportedVersion(test.version)
+		if (err == nil) != test.ok {
+			t.Errorf("validateSupportedVersion(%q) error = %v, ok = %v", test.version, err, test.ok)
+		}
+	}
+}

@@ -116,7 +116,8 @@ type ResourceLimit struct {
 
 type Tables struct {
 	engine.Section
-	Rows []Table `json:"rows"`
+	Rows      []Table `json:"rows"`
+	Truncated bool    `json:"truncated"`
 }
 
 type Table struct {
@@ -129,7 +130,8 @@ type Table struct {
 
 type Indexes struct {
 	engine.Section
-	Rows []Index `json:"rows"`
+	Rows      []Index `json:"rows"`
+	Truncated bool    `json:"truncated"`
 }
 
 type Index struct {
